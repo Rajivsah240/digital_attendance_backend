@@ -60,10 +60,12 @@ if (cluster.isPrimary) {
   const User = mongoose.model("User", UserSchema);
 
   const SubjectSchema = new mongoose.Schema({
+    subjectID: { type: String, required: true },
     subjectCode: { type: String, required: true },
     subjectName: { type: String, required: true },
     department: { type: String, required: true },
-    course: { type: String, required: true },
+    section: { type: String, required: true },
+    programme: { type: String, required: true },
     semester: { type: String, required: true },
     faculties: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     students: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
@@ -88,6 +90,14 @@ if (cluster.isPrimary) {
     },
   });
   const Subject = mongoose.model("Subject", SubjectSchema);
+
+  
+  const ArchiveSubjectSchema = new mongoose.Schema({}, { strict: false });
+  const ArchiveSubject = mongoose.model(
+    "ArchiveSubject",
+    ArchiveSubjectSchema,
+    "archived_subjects"
+  );
 
   const generateToken = (user, expiresIn) =>
     jwt.sign(user, process.env.JWT_SECRET_KEY, { expiresIn });
@@ -238,18 +248,22 @@ if (cluster.isPrimary) {
   app.post("/faculty/add-subject", async (req, res) => {
     try {
       const {
+        subjectID,
         subjectCode,
         subjectName,
-        course,
+        programme,
         semester,
         department,
+        section,
         facultyEmail,
       } = req.body;
       if (
+        !subjectID ||
         !subjectCode ||
         !subjectName ||
-        !course ||
+        !programme ||
         !department ||
+        !section ||
         !semester ||
         !facultyEmail
       ) {
@@ -268,10 +282,12 @@ if (cluster.isPrimary) {
       }
 
       const newSubject = new Subject({
+        subjectID,
         subjectCode,
         subjectName,
-        course,
+        programme,
         department,
+        section,
         semester,
         faculties: [faculty._id],
       });
@@ -290,31 +306,33 @@ if (cluster.isPrimary) {
 
   app.post("/faculty/add-faculty", async (req, res) => {
     try {
-      const { subjectCode, email } = req.body;
-  
-      if (!subjectCode || !email) {
-        return res.status(400).json({ error: "Subject Code and Faculty Email are required" });
+      const { subjectID, email } = req.body;
+
+      if (!subjectID || !email) {
+        return res
+          .status(400)
+          .json({ error: "Subject Code and Faculty Email are required" });
       }
-  
+
       const faculty = await User.findOne({ email });
       if (!faculty) {
         return res.status(404).json({ error: "Faculty not found" });
       }
-  
-      const subject = await Subject.findOne({ subjectCode });
+
+      const subject = await Subject.findOne({ subjectID });
       if (!subject) {
         return res.status(404).json({ error: "Subject not found" });
       }
-  
-      
+
       if (subject.faculties.includes(faculty._id)) {
-        return res.status(409).json({ error: "Faculty already assigned to this subject" });
+        return res
+          .status(409)
+          .json({ error: "Faculty already assigned to this subject" });
       }
-  
-      
+
       subject.faculties.push(faculty._id);
       await subject.save();
-  
+
       res.status(200).json({ message: "Faculty added successfully", subject });
     } catch (error) {
       console.error("Error adding faculty:", error);
@@ -322,10 +340,10 @@ if (cluster.isPrimary) {
     }
   });
 
-  app.delete("/faculty/delete-subject/:subjectCode", async (req, res) => {
+  app.delete("/faculty/delete-subject/:subjectID", async (req, res) => {
     try {
-      const { subjectCode } = req.params;
-      const subject = await Subject.findOneAndDelete({ subjectCode });
+      const { subjectID } = req.params;
+      const subject = await Subject.findOneAndDelete({ subjectID });
       if (!subject) {
         return res.status(404).json({ error: "Subject not found" });
       }
@@ -337,22 +355,84 @@ if (cluster.isPrimary) {
     }
   });
 
+  app.post("/faculty/archive-subject", async (req, res) => {
+    try {
+      const { subjectID, email } = req.body;
+  
+      if (!subjectID || !email) {
+        return res.status(400).json({ error: "SubjectID and Email are required" });
+      }
+  
+      const faculty = await User.findOne({ email, role: "Faculty" });
+      if (!faculty) {
+        return res.status(404).json({ error: "Faculty not found or not authorized" });
+      }
+  
+      const subject = await Subject.findOne({ subjectID }).populate("faculties");
+      if (!subject) {
+        return res.status(404).json({ error: "Subject not found" });
+      }
+  
+      const isFacultyAssigned = subject.faculties.some((fac) => fac._id.equals(faculty._id));
+      if (!isFacultyAssigned) {
+        return res.status(403).json({ error: "Faculty is not assigned to this subject" });
+      }
+  
+      await ArchiveSubject.create(subject.toObject());
+  
+      await Subject.deleteOne({ _id: subject._id });
+  
+      return res.status(200).json({ message: "Subject archived successfully" });
+    } catch (error) {
+      console.error("Error archiving subject:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/faculty/get-archived-subjects/:email", async (req, res) => {
+    try {
+      const { email } = req.params;
+  
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+  
+      const faculty = await User.findOne({ email, role: "Faculty" });
+      
+      if (!faculty) {
+        return res.status(404).json({ error: "Faculty not found" });
+      }
+  
+      const archivedSubjects = await ArchiveSubject.find({ "faculties._id": faculty._id, });
+      
+  
+      return res.status(200).json({ archivedSubjects });
+    } catch (error) {
+      console.error("Error fetching archived s,ubjects:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.post("/faculty/remove-student", async (req, res) => {
-    const { subjectCode, scholarID } = req.body;
+    const { subjectID, scholarID } = req.body;
 
     try {
-      const subject = await Subject.findOne({ subjectCode }).populate(
+      const subject = await Subject.findOne({ subjectID }).populate(
         "students"
       );
 
       if (!subject) {
-        return res.status(404).json({success : false, message: "Subject not found" });
+        return res
+          .status(404)
+          .json({ success: false, error: "Subject not found" });
       }
 
       const student = await User.findOne({ registration_number: scholarID });
 
       if (!student) {
-        return res.status(404).json({success : false, message: "Student not found" });
+        return res
+          .status(404)
+          .json({ success: false, error: "Student not found" });
       }
 
       subject.students = subject.students.filter(
@@ -366,9 +446,11 @@ if (cluster.isPrimary) {
       });
 
       await subject.save();
-      res.status(200).json({success : true, message: "Student removed successfully!" });
+      res
+        .status(200)
+        .json({ success: true, message: "Student removed successfully!" });
     } catch (error) {
-      res.status(500).json({success : false, message: "Server error" });
+      res.status(500).json({ success: false, error: "Server error" });
     }
   });
 
@@ -400,8 +482,13 @@ if (cluster.isPrimary) {
             : 0;
 
         return {
+          subjectID: subject.subjectID,
           subjectCode: subject.subjectCode,
           subjectName: subject.subjectName,
+          department: subject.department,
+          section: subject.section,
+          programme: subject.programme,
+          semester: subject.semester,
           numberOfStudents: subject.students.length,
           numberOfClassesTaken: subject.attendanceRecords.length,
           averageAttendance: averageAttendance,
@@ -431,11 +518,11 @@ if (cluster.isPrimary) {
     }
   });
 
-  app.get("/faculty/attendanceRecord/:subjectCode", async (req, res) => {
+  app.get("/faculty/attendanceRecord/:subjectID", async (req, res) => {
     try {
-      const { subjectCode } = req.params;
+      const { subjectID } = req.params;
 
-      const subject = await Subject.findOne({ subjectCode })
+      const subject = await Subject.findOne({ subjectID })
         .populate("students")
         .populate("attendanceRecords.attendance.student");
 
@@ -444,6 +531,7 @@ if (cluster.isPrimary) {
       }
 
       const attendanceResponse = {
+        subjectID: subject.subjectID,
         subjectCode: subject.subjectCode,
         subjectName: subject.subjectName,
         attendanceRecords: subject.attendanceRecords.map((record) => ({
@@ -457,7 +545,7 @@ if (cluster.isPrimary) {
         })),
       };
 
-      res.json(attendanceResponse);
+      res.status(200).json(attendanceResponse);
     } catch (error) {
       res.status(500).json({ error: "Internal Server Error" });
     }
@@ -465,9 +553,9 @@ if (cluster.isPrimary) {
 
   // Faculty - Start Attendance
   app.post("/faculty/start-attendance", async (req, res) => {
-    const { email, subjectCode, location } = req.body;
+    const { email, subjectID, location } = req.body;
 
-    const subject = await Subject.findOne({ subjectCode });
+    const subject = await Subject.findOne({ subjectID });
     if (!subject)
       return res
         .status(404)
@@ -479,19 +567,12 @@ if (cluster.isPrimary) {
       (record) => record.date.toISOString().split("T")[0] === todayDate
     );
 
-    if (alreadyExists) {
-      return res.status(400).json({
-        success: false,
-        error: "Attendance for today has already been done.",
-      });
-    }
-
     await redisClient.hSet(
-      `attendance:${subjectCode}`,
+      `attendance:${subjectID}`,
       email,
       JSON.stringify(location)
     );
-    await redisClient.expire(`attendance:${subjectCode}`, 300);
+    await redisClient.expire(`attendance:${subjectID}`, 300);
 
     const newAttendanceRecord = {
       date: new Date(),
@@ -501,7 +582,9 @@ if (cluster.isPrimary) {
       })),
     };
 
-    subject.attendanceRecords.push(newAttendanceRecord);
+    if (!alreadyExists) {
+      subject.attendanceRecords.push(newAttendanceRecord);
+    }
     await subject.save();
 
     res.json({ success: true, message: "Attendance started" });
@@ -509,25 +592,58 @@ if (cluster.isPrimary) {
 
   // Faculty - Stop Attendance
   app.post("/faculty/stop-attendance", async (req, res) => {
-    const { email, subjectCode } = req.body;
+    const { email, subjectID } = req.body;
 
-    if (!email || !subjectCode) {
-      return res.status(400).json({ success: false, message: "Invalid data" });
+    if (!email || !subjectID) {
+      return res.status(400).json({ success: false, error: "Invalid data" });
     }
 
-    await redisClient.hDel(`attendance:${subjectCode}`, email);
+    await redisClient.hDel(`attendance:${subjectID}`, email);
     res.json({ success: true, message: "Attendance stopped" });
+  });
+
+  app.delete("/faculty/delete-attendance", async (req, res) => {
+    try {
+      const { subjectID, date } = req.body;
+
+      if (!subjectID || !date) {
+        return res
+          .status(400)
+          .json({ error: "Subject code and date are required" });
+      }
+
+      const subject = await Subject.findOne({ subjectID });
+
+      if (!subject) {
+        return res.status(404).json({ error: "Subject not found" });
+      }
+
+      subject.attendanceRecords = subject.attendanceRecords.filter(
+        (record) =>
+          record.date.toISOString().split("T")[0] !==
+          new Date(date).toISOString().split("T")[0]
+      );
+
+      await subject.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Attendance record deleted successfully",
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Internal Server Error" });
+    }
   });
 
   app.post("/faculty/update-attendance", async (req, res) => {
     try {
-      const { subjectCode, date, updatedAttendance } = req.body;
+      const { subjectID, date, updatedAttendance } = req.body;
 
-      if (!subjectCode || !date || !updatedAttendance) {
+      if (!subjectID || !date || !updatedAttendance) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const subject = await Subject.findOne({ subjectCode });
+      const subject = await Subject.findOne({ subjectID });
       if (!subject) {
         return res.status(404).json({ error: "Subject not found" });
       }
@@ -566,15 +682,15 @@ if (cluster.isPrimary) {
   });
 
   // Export Attendance Report
-  app.get("/faculty/email-attendance/:subjectCode", async (req, res) => {
+  app.get("/faculty/email-attendance/:subjectID", async (req, res) => {
     try {
-      const { subjectCode } = req.params;
+      const { subjectID } = req.params;
 
-      const subject = await Subject.findOne({ subjectCode })
+      const subject = await Subject.findOne({ subjectID })
         .populate("faculty")
         .populate("students");
       if (!subject) {
-        return res.status(404).json({ message: "Subject not found" });
+        return res.status(404).json({ error: "Subject not found" });
       }
 
       const attendanceMap = new Map();
@@ -666,7 +782,7 @@ if (cluster.isPrimary) {
       res.json({ message: "Attendance sheet sent successfully" });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ message: "Internal Server Error" });
+      res.status(500).json({ error: "Internal Server Error" });
     }
   });
 
@@ -695,17 +811,17 @@ if (cluster.isPrimary) {
       const subjects = await Subject.find({});
       const grouped = {};
       subjects.forEach((subject) => {
-        const { course, department, semester, subjectCode } = subject;
-        if (!grouped[course]) {
-          grouped[course] = {};
+        const { programme, department, semester, subjectID } = subject;
+        if (!grouped[programme]) {
+          grouped[programme] = {};
         }
-        if (!grouped[course][department]) {
-          grouped[course][department] = {};
+        if (!grouped[programme][department]) {
+          grouped[programme][department] = {};
         }
-        if (!grouped[course][department][semester]) {
-          grouped[course][department][semester] = [];
+        if (!grouped[programme][department][semester]) {
+          grouped[programme][department][semester] = [];
         }
-        grouped[course][department][semester].push(subjectCode);
+        grouped[programme][department][semester].push(subjectID);
       });
       res.json(grouped);
     } catch (error) {
@@ -716,9 +832,9 @@ if (cluster.isPrimary) {
 
   // Student - Enroll in Subject
   app.post("/student/enroll", async (req, res) => {
-    const { studentEmail, subjectCode } = req.body;
+    const { studentEmail, subjectID } = req.body;
     try {
-      const subject = await Subject.findOne({ subjectCode });
+      const subject = await Subject.findOne({ subjectID });
       if (!subject) return res.status(404).json({ error: "Subject not found" });
 
       const student = await User.findOne({ email: studentEmail });
@@ -740,21 +856,21 @@ if (cluster.isPrimary) {
   });
 
   app.post("/student/unenroll", async (req, res) => {
-    const { subjectCode, email } = req.body;
+    const { subjectID, email } = req.body;
 
     try {
-      const subject = await Subject.findOne({ subjectCode }).populate(
+      const subject = await Subject.findOne({ subjectID }).populate(
         "students"
       );
 
       if (!subject) {
-        return res.status(404).json({ message: "Subject not found" });
+        return res.status(404).json({ error: "Subject not found" });
       }
 
       const student = await User.findOne({ email });
 
       if (!student) {
-        return res.status(404).json({ message: "Student not found" });
+        return res.status(404).json({ error: "Student not found" });
       }
 
       subject.students = subject.students.filter(
@@ -768,12 +884,11 @@ if (cluster.isPrimary) {
       });
 
       await subject.save();
-      res.json({ message: "Student removed successfully!" });
+      res.status(200).json({ message: "Student removed successfully!" });
     } catch (error) {
-      res.status(500).json({ message: "Server error" });
+      res.status(500).json({ error: "Server error" });
     }
   });
-
 
   // Student - Get Enrolled Subjects
   app.get("/student/dashboard/:email", async (req, res) => {
@@ -814,10 +929,12 @@ if (cluster.isPrimary) {
         );
 
         return {
+          subjectID: subject.subjectID,
           subjectCode: subject.subjectCode,
           subjectName: subject.subjectName,
+          programme: subject.programme,
           department: subject.department,
-          course: subject.course,
+          section: subject.section,
           semester: subject.semester,
           faculty: subject.faculty,
           totalClasses,
@@ -839,7 +956,7 @@ if (cluster.isPrimary) {
         };
       });
 
-      res.json(response);
+      res.status(200).json(response);
     } catch (error) {
       console.error("Error fetching student dashboard:", error);
       res.status(500).json({ error: "Internal Server Error" });
@@ -849,13 +966,13 @@ if (cluster.isPrimary) {
   // Student - Mark Attendance
   app.post("/student/mark-attendance", async (req, res) => {
     try {
-      const { studentEmail, subjectCode } = req.body;
+      const { studentEmail, subjectID } = req.body;
 
-      if (!studentEmail || !subjectCode) {
+      if (!studentEmail || !subjectID) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const subject = await Subject.findOne({ subjectCode });
+      const subject = await Subject.findOne({ subjectID });
       if (!subject) {
         return res.status(404).json({ error: "Subject not found" });
       }
