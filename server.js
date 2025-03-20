@@ -332,10 +332,10 @@ if (cluster.isPrimary) {
     try {
       const faculty = await User.findOne({ email: facultyEmail });
       const subjects = await Subject.find({ faculties: faculty._id });
-      if (!subjects.length)
-        return res
-          .status(404)
-          .json({ error: "No subjects found for this faculty" });
+      // if (!subjects.length)
+      //   return res
+      //     .status(404)
+      //     .json({ error: "No subjects found for this faculty" });
 
       let enrollmentRequest = false;
       let collabRequest = false;
@@ -1104,7 +1104,20 @@ if (cluster.isPrimary) {
       if (!student)
         return res.status(403).json({ error: "Invalid student account" });
 
+      if (subject.students.includes(student._id)) {
+        return res
+          .status(409)
+          .json({ error: "Student is already enrolled in this subject" });
+      }
+
       const requestKey = `enrollment_requests:${subjectID}`;
+
+      const existingRequest = await redisClient.hGet(requestKey, studentEmail);
+      if (existingRequest) {
+        return res
+          .status(409)
+          .json({ error: "Enrollment request already submitted" });
+      }
 
       await redisClient.hSet(
         requestKey,
