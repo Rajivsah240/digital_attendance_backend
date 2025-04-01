@@ -8,7 +8,6 @@ const transporter = require("../utils/emailService");
 
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-
 router.post("/send-otp-first-time", async (req, res) => {
   const { email } = req.body;
 
@@ -67,14 +66,14 @@ router.post("/verify-otp", async (req, res) => {
     return res.status(400).json({ error: "Invalid or expired OTP" });
 
   await redisClient.del(`otp:${email}`);
-  res.json({ success: true, message: "OTP verified" });
+  res.status(200).json({ success: true, message: "OTP verified" });
 });
 
 router.post("/reset-password", async (req, res) => {
   const { email, newPassword } = req.body;
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   await User.updateOne({ email }, { password: hashedPassword });
-  res.json({ success: true, message: "Password reset successful" });
+  res.status(200).json({ success: true, message: "Password reset successful" });
 });
 
 module.exports = router;

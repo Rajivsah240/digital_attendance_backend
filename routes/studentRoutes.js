@@ -5,13 +5,10 @@ const User = require("../models/User");
 const Subject = require("../models/Subject");
 const redisClient = require("../config/redis");
 
+router.get("/faculty-location/:subjectID", async (req, res) => {
+  const { subjectID } = req.params;
 
-router.get("/student/faculty-location/:subjectCode", async (req, res) => {
-  const { subjectCode } = req.params;
-
-  const facultyLocation = await redisClient.hGetAll(
-    `attendance:${subjectCode}`
-  );
+  const facultyLocation = await redisClient.hGetAll(`attendance:${subjectID}`);
 
   if (!facultyLocation || Object.keys(facultyLocation).length === 0) {
     return res
@@ -26,22 +23,22 @@ router.get("/student/faculty-location/:subjectCode", async (req, res) => {
 });
 
 
-router.get("/student/subjects", async (req, res) => {
+router.get("/subjects", async (req, res) => {
   try {
     const subjects = await Subject.find({});
     const grouped = {};
     subjects.forEach((subject) => {
-      const { course, department, semester, subjectCode } = subject;
-      if (!grouped[course]) {
-        grouped[course] = {};
+      const { programme, department, semester, subjectID } = subject;
+      if (!grouped[programme]) {
+        grouped[programme] = {};
       }
-      if (!grouped[course][department]) {
-        grouped[course][department] = {};
+      if (!grouped[programme][department]) {
+        grouped[programme][department] = {};
       }
-      if (!grouped[course][department][semester]) {
-        grouped[course][department][semester] = [];
+      if (!grouped[programme][department][semester]) {
+        grouped[programme][department][semester] = [];
       }
-      grouped[course][department][semester].push(subjectCode);
+      grouped[programme][department][semester].push(subjectID);
     });
     res.json(grouped);
   } catch (error) {
@@ -51,29 +48,120 @@ router.get("/student/subjects", async (req, res) => {
 });
 
 
-router.post("/student/enroll", async (req, res) => {
-  const { studentEmail, subjectCode } = req.body;
+router.post("/enroll", async (req, res) => {
+  const { studentEmail, subjectID } = req.body;
   try {
-    const subject = await Subject.findOne({ subjectCode });
+    const subject = await Subject.findOne({ subjectID });
     if (!subject) return res.status(404).json({ error: "Subject not found" });
 
     const student = await User.findOne({ email: studentEmail });
     if (!student)
       return res.status(403).json({ error: "Invalid student account" });
-    if (subject.students.includes(student._id)) {
-      return res.status(400).json({ error: "Student already enrolled" });
-    }
-    subject.students.push(student._id);
-    await subject.save();
 
-    res.status(200).json({ message: "Enrollment successful" });
+    if (subject.students.includes(student._id)) {
+      return res
+        .status(409)
+        .json({ error: "Student is already enrolled in this subject" });
+    }
+
+    const requestKey = `enrollment_requests:${subjectID}`;
+
+    const existingRequest = await redisClient.hGet(requestKey, studentEmail);
+    if (existingRequest) {
+      return res
+        .status(409)
+        .json({ error: "Enrollment request already submitted" });
+    }
+
+    await redisClient.hSet(
+      requestKey,
+      studentEmail,
+      JSON.stringify({
+        email: studentEmail,
+        name: student.name,
+        scholarID: student.registration_number,
+        timestamp: Date.now(),
+      })
+    );
+
+    res.status(200).json({ message: "Enrollment request submitted" });
   } catch (error) {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
+router.post("/pending-enrollments", async (req, res) => {
+  const { studentEmail } = req.body;
 
-router.get("/student/dashboard/:email", async (req, res) => {
+  try {
+    if (!studentEmail) {
+      return res.status(400).json({ error: "Student email is required" });
+    }
+
+    const student = await User.findOne({ email: studentEmail });
+    if (!student) {
+      return res.status(403).json({ error: "Invalid student account" });
+    }
+
+    const keys = await redisClient.keys("enrollment_requests:*");
+    const pendingSubjects = [];
+
+    for (const key of keys) {
+      const enrollmentRequests = await redisClient.hGetAll(key);
+      if (enrollmentRequests[studentEmail]) {
+        const subjectID = key.split(":")[1];
+        const subject = await Subject.findOne(
+          { subjectID },
+          "subjectID subjectCode subjectName"
+        );
+        if (subject) {
+          pendingSubjects.push(subject);
+        }
+      }
+    }
+
+    res.status(200).json({ pendingSubjects });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/unenroll", async (req, res) => {
+  const { subjectID, email } = req.body;
+
+  try {
+    const subject = await Subject.findOne({ subjectID }).populate("students");
+
+    if (!subject) {
+      return res.status(404).json({ error: "Subject not found" });
+    }
+
+    const student = await User.findOne({ email });
+
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    subject.students = subject.students.filter(
+      (s) => s._id.toString() !== student._id.toString()
+    );
+
+    subject.attendanceRecords.forEach((record) => {
+      record.attendance = record.attendance.filter(
+        (entry) => entry.student.toString() !== student._id.toString()
+      );
+    });
+
+    await subject.save();
+    res.status(200).json({ message: "Student removed successfully!" });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+router.get("/dashboard/:email", async (req, res) => {
   try {
     const student = await User.findOne({ email: req.params.email });
     if (!student) {
@@ -111,10 +199,12 @@ router.get("/student/dashboard/:email", async (req, res) => {
       );
 
       return {
+        subjectID: subject.subjectID,
         subjectCode: subject.subjectCode,
         subjectName: subject.subjectName,
+        programme: subject.programme,
         department: subject.department,
-        course: subject.course,
+        section: subject.section,
         semester: subject.semester,
         faculty: subject.faculty,
         totalClasses,
@@ -128,6 +218,7 @@ router.get("/student/dashboard/:email", async (req, res) => {
           Students: record.attendance.map((entry) => ({
             _id: entry.student._id,
             name: entry.student.name,
+            email: entry.student.email,
             scholarID: entry.student.registration_number,
             present: entry.present,
           })),
@@ -135,7 +226,7 @@ router.get("/student/dashboard/:email", async (req, res) => {
       };
     });
 
-    res.json(response);
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error fetching student dashboard:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -143,15 +234,15 @@ router.get("/student/dashboard/:email", async (req, res) => {
 });
 
 
-router.post("/student/mark-attendance", async (req, res) => {
+router.post("/mark-attendance", async (req, res) => {
   try {
-    const { studentEmail, subjectCode } = req.body;
+    const { studentEmail, subjectID } = req.body;
 
-    if (!studentEmail || !subjectCode) {
+    if (!studentEmail || !subjectID) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const subject = await Subject.findOne({ subjectCode });
+    const subject = await Subject.findOne({ subjectID });
     if (!subject) {
       return res.status(404).json({ error: "Subject not found" });
     }

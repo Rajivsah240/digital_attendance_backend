@@ -297,7 +297,7 @@ if (cluster.isPrimary) {
       const faculty = await User.findOne({ email: facultyEmail });
 
       const existingSubject = await Subject.findOne({
-        subjectCode,
+        subjectID,
       });
       if (existingSubject) {
         return res.status(409).json({

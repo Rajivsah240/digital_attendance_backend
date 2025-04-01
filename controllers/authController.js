@@ -38,5 +38,6 @@ exports.login = async (req, res) => {
     login: "success",
     access_token: accessToken,
     refresh_token: refreshToken,
+    name: user.name,
   });
 };
