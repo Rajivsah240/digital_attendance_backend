@@ -32,12 +32,30 @@ if (cluster.isPrimary) {
   app.use(helmet());
   app.use(morgan("combined"));
 
-  mongoose
-    .connect(process.env.MONGO_URI, {
-      maxPoolSize: 100,
-    })
-    .then(() => console.log("MongoDB connected"))
-    .catch((err) => console.log(err));
+  const connectMongoDB = async () => {
+    try {
+      await mongoose.connect(process.env.MONGO_URI, {
+        maxPoolSize: 100,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      });
+      console.log("MongoDB connected");
+    } catch (err) {
+      console.error("MongoDB connection failed:", err);
+      setTimeout(connectMongoDB, 5000);
+    }
+  };
+
+  connectMongoDB();
+
+  mongoose.connection.on("disconnected", () => {
+    console.error("MongoDB disconnected! Retrying...");
+    connectMongoDB();
+  });
+
+  mongoose.connection.on("error", (err) => {
+    console.error("MongoDB error:", err);
+  });
 
   const redisClient = redis.createClient({
     username: process.env.REDIS_USERNAME,
@@ -45,14 +63,31 @@ if (cluster.isPrimary) {
     socket: {
       host: process.env.REDIS_HOST,
       port: process.env.REDIS_PORT,
+      reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
     },
   });
-  redisClient
-    .connect()
-    .then(() => console.log("Redis connected"))
-    .catch(console.error);
 
-  //Schemas
+  const connectRedis = async () => {
+    try {
+      await redisClient.connect();
+      console.log("Redis connected");
+    } catch (err) {
+      console.error("Redis connection failed:", err);
+      setTimeout(connectRedis, 5000);
+    }
+  };
+
+  connectRedis();
+
+  redisClient.on("error", (err) => {
+    console.error("Redis error:", err);
+  });
+
+  redisClient.on("end", () => {
+    console.warn("Redis disconnected! Retrying...");
+    connectRedis();
+  });
+
   const UserSchema = new mongoose.Schema({
     name: String,
     email: { type: String, unique: true },
