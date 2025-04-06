@@ -16,6 +16,14 @@ const path = require("path");
 const fs = require("fs");
 const e = require("express");
 
+
+//github listner
+const bodyParser = require('body-parser');
+const crypto = require('crypto');
+const { exec } = require('child_process');
+const WEBHOOK_SECRET = 'digital.attendance.nits';
+//github listener
+
 const APK_PATH = path.join(__dirname, "downloads", "app-release.apk");
 
 dotenv.config();
@@ -34,6 +42,26 @@ if (cluster.isPrimary) {
   app.use(express.json());
   app.use(helmet());
   app.use(morgan("combined"));
+
+
+  //github listner
+  app.use('/github-webhook', bodyParser.raw({ type: '*/*' }));
+  app.post('/github-webhook', (req, res) => {
+
+    console.log('GitHub webhook received. Pulling latest code...');
+    exec('cd /home/server/Server/digital_attendance_backend && git pull origin main', (err, stdout, stderr) => {
+      if (err) {
+        console.error(`Pull failed: ${stderr}`);
+        return res.status(500).send('Pull failed');
+      }
+      console.log(`Pull success:\n${stdout}`);
+      res.status(200).send('Pulled latest code');
+      
+    });
+  });
+  //github listner
+
+
 
   const connectMongoDB = async () => {
     try {
