@@ -16,9 +16,7 @@ const path = require("path");
 const fs = require("fs");
 const e = require("express");
 
-
-const APK_LINK = "https://drive.usercontent.google.com/download?id=12g63FaaL7tv8BIyD8SrxPDfSwRalGIDg&export=download&authuser=0&confirm=t&uuid=b471b96b-b037-4d1a-82e3-dea04588a483&at=APcmpoxiI2wEZx5b9HI9uICbS8xL:1743945907654";
-
+const APK_PATH = path.join(__dirname, "downloads", "app-release.apk");
 
 dotenv.config();
 const numCPUs = os.cpus().length;
@@ -179,21 +177,24 @@ if (cluster.isPrimary) {
   // });
   // app.use(limiter);
 
-  //Routes
+  
   app.get("/", async (req, res) => {
     res.send("Hello World");
   });
 
-
+  app.use((req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
+  });
 
   // Website
   app.get("/stats", async (req, res) => {
     try {
       let Download = await download.findOne();
       if (!Download) Download = await download.create({});
-  
+
       const userCount = await User.countDocuments();
-  
+
       res.json({
         downloads: Download.count,
         activeUsers: userCount,
@@ -203,17 +204,29 @@ if (cluster.isPrimary) {
       res.status(500).json({ error: "Failed to fetch stats" });
     }
   });
-  
+
   app.get("/download", async (req, res) => {
-    let record = await download.findOne();
-    if (!record) {
-      record = await download.create({});
+    if (!fs.existsSync(APK_PATH)) {
+      return res.status(404).send("APK not found.");
     }
-  
-    record.count += 1;
-    await record.save();
-  
-    res.redirect(APK_LINK);
+
+    res.download(APK_PATH, "DigitalAttendance.apk", async (err) => {
+      if (err) {
+        console.error("Download failed:", err);
+      } else {
+        try {
+          let record = await download.findOne();
+          if (!record) {
+            record = await download.create({});
+          }
+          record.count += 1;
+          await record.save();
+          console.log("Download count updated.");
+        } catch (dbErr) {
+          console.error("Failed to update download count:", dbErr);
+        }
+      }
+    });
   });
 
   app.post("/register", async (req, res) => {
