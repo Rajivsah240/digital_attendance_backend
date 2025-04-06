@@ -52,6 +52,16 @@ if (cluster.isPrimary) {
   app.use('/github-webhook', bodyParser.raw({ type: '*/*' }));
   app.post('/github-webhook', (req, res) => {
 
+    const signature = req.headers['x-hub-signature-256'];
+    const digest = 'sha256=' + crypto.createHmac('sha256', WEBHOOK_SECRET)
+      .update(req.body)
+      .digest('hex');
+
+    if (!signature || signature !== digest) {
+      console.log('Invalid signature. Webhook ignored.');
+      return res.status(403).send('Invalid signature.');
+    }
+
     console.log('GitHub webhook received. Pulling latest code...');
     exec('cd /home/server/Server/digital_attendance_backend && git pull origin main', (err, stdout, stderr) => {
       if (err) {
