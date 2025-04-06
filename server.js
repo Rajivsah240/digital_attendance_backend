@@ -42,7 +42,7 @@ if (cluster.isPrimary) {
       console.log("MongoDB connected");
     } catch (err) {
       console.error("MongoDB connection failed:", err);
-      setTimeout(connectMongoDB, 5000);
+      setTimeout(connectMongoDB, 3000);
     }
   };
 
@@ -73,7 +73,7 @@ if (cluster.isPrimary) {
       console.log("Redis connected");
     } catch (err) {
       console.error("Redis connection failed:", err);
-      setTimeout(connectRedis, 5000);
+      setTimeout(connectRedis, 8000);
     }
   };
 
