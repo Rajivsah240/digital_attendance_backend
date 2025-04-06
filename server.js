@@ -34,6 +34,10 @@ if (cluster.isPrimary) {
   app.use(express.json());
   app.use(helmet());
   app.use(morgan("combined"));
+  app.use((req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
+  });
 
   const connectMongoDB = async () => {
     try {
@@ -182,10 +186,7 @@ if (cluster.isPrimary) {
     res.send("Hello World");
   });
 
-  app.use((req, res, next) => {
-    res.setHeader('ngrok-skip-browser-warning', 'true');
-    next();
-  });
+  
 
   // Website
   app.get("/stats", async (req, res) => {
