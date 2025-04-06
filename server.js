@@ -41,8 +41,8 @@ if (cluster.isPrimary) {
       });
       console.log("MongoDB connected");
     } catch (err) {
-      console.error("MongoDB connection failed:", err);
-      setTimeout(connectMongoDB, 3000);
+      console.error("MongoDB connection failed");
+      setTimeout(connectMongoDB, 4000);
     }
   };
 
@@ -54,7 +54,7 @@ if (cluster.isPrimary) {
   });
 
   mongoose.connection.on("error", (err) => {
-    console.error("MongoDB error:", err);
+    console.error("MongoDB error");
   });
 
   const redisClient = redis.createClient({
@@ -72,15 +72,15 @@ if (cluster.isPrimary) {
       await redisClient.connect();
       console.log("Redis connected");
     } catch (err) {
-      console.error("Redis connection failed:", err);
-      setTimeout(connectRedis, 8000);
+      console.error("Redis connection failed");
+      setTimeout(connectRedis, 5000);
     }
   };
 
   connectRedis();
 
   redisClient.on("error", (err) => {
-    console.error("Redis error:", err);
+    console.error("Redis error");
   });
 
   redisClient.on("end", () => {
