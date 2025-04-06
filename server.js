@@ -15,6 +15,11 @@ const xlsx = require("xlsx");
 const path = require("path");
 const fs = require("fs");
 const e = require("express");
+
+
+const APK_LINK = "https://drive.usercontent.google.com/download?id=12g63FaaL7tv8BIyD8SrxPDfSwRalGIDg&export=download&authuser=0&confirm=t&uuid=b471b96b-b037-4d1a-82e3-dea04588a483&at=APcmpoxiI2wEZx5b9HI9uICbS8xL:1743945907654";
+
+
 dotenv.config();
 const numCPUs = os.cpus().length;
 
@@ -136,6 +141,15 @@ if (cluster.isPrimary) {
     "archived_subjects"
   );
 
+  const downloadSchema = new mongoose.Schema({
+    count: {
+      type: Number,
+      default: 0,
+    },
+  });
+
+  const download = mongoose.model("Download", downloadSchema);
+
   // async function createMultipleUsers() {
   //   const users = [
   //     { name: "Test Faculty 1", email: "testfaculty1@example.com", password: "Test@faculty1", registration_number: "NITS12345", role: "Faculty" },
@@ -168,6 +182,38 @@ if (cluster.isPrimary) {
   //Routes
   app.get("/", async (req, res) => {
     res.send("Hello World");
+  });
+
+
+
+  // Website
+  app.get("/stats", async (req, res) => {
+    try {
+      let Download = await download.findOne();
+      if (!Download) Download = await download.create({});
+  
+      const userCount = await User.countDocuments();
+  
+      res.json({
+        downloads: Download.count,
+        activeUsers: userCount,
+      });
+    } catch (error) {
+      console.error("Stats API error:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+  
+  app.get("/download", async (req, res) => {
+    let record = await download.findOne();
+    if (!record) {
+      record = await download.create({});
+    }
+  
+    record.count += 1;
+    await record.save();
+  
+    res.redirect(APK_LINK);
   });
 
   app.post("/register", async (req, res) => {
