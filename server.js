@@ -189,7 +189,6 @@ if (cluster.isPrimary) {
 
   //   await User.insertMany(users);
   //   console.log("Multiple users inserted successfully!");
-
   // }
 
   // createMultipleUsers();
