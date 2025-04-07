@@ -224,12 +224,13 @@ if (cluster.isPrimary) {
     if (!record) {
       record = await download.create({});
     }
-
+  
     record.count += 1;
     await record.save();
-
-    res.redirect(APK_LINK);
+  
+    res.json({ apkUrl: APK_LINK });
   });
+  
 
   app.post("/register", async (req, res) => {
     const { name, email, password, registration_number, selected_role } =
