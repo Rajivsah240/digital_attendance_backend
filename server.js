@@ -16,15 +16,13 @@ const path = require("path");
 const fs = require("fs");
 const e = require("express");
 
-
 //github listner
-const bodyParser = require('body-parser');
-const crypto = require('crypto');
-const { exec } = require('child_process');
-//github listener
+const bodyParser = require("body-parser");
+const crypto = require("crypto");
+const { exec } = require("child_process");
 
-const APK_PATH = path.join(__dirname, "downloads", "app-release.apk");
-
+const APK_LINK =
+  "https://github.com/Digital-Attendance/digital_attendance/releases/download/v1.0/app-release.apk";
 dotenv.config();
 const numCPUs = os.cpus().length;
 
@@ -41,30 +39,28 @@ if (cluster.isPrimary) {
   app.use(express.json());
   app.use(helmet());
   app.use(morgan("combined"));
-  // app.use((req, res, next) => {
-  //   res.setHeader('ngrok-skip-browser-warning', 'true');
-  //   next();
-  // });
-
+  app.use((req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
+  });
 
   //github listner
-  app.use('/github-webhook', bodyParser.raw({ type: '*/*' }));
-  app.post('/github-webhook', (req, res) => {
-
-    console.log('GitHub webhook received. Pulling latest code...');
-    exec('cd /home/server/Server/digital_attendance_backend && git pull origin main', (err, stdout, stderr) => {
-      if (err) {
-        console.error(`Pull failed: ${stderr}`);
-        return res.status(500).send('Pull failed');
+  app.use("/github-webhook", bodyParser.raw({ type: "*/*" }));
+  app.post("/github-webhook", (req, res) => {
+    console.log("GitHub webhook received. Pulling latest code...");
+    exec(
+      "cd /home/server/Server/digital_attendance_backend && git pull origin main",
+      (err, stdout, stderr) => {
+        if (err) {
+          console.error(`Pull failed: ${stderr}`);
+          return res.status(500).send("Pull failed");
+        }
+        console.log(`Pull success:\n${stdout}`);
+        res.status(200).send("Pulled latest code");
       }
-      console.log(`Pull success:\n${stdout}`);
-      res.status(200).send('Pulled latest code');
-      
-    });
+    );
   });
   //github listner
-
-
 
   const connectMongoDB = async () => {
     try {
@@ -201,19 +197,9 @@ if (cluster.isPrimary) {
   const generateToken = (user, expiresIn) =>
     jwt.sign(user, process.env.JWT_SECRET_KEY, { expiresIn });
 
-  // const limiter = rateLimit({
-  //   windowMs: 1 * 60 * 1000,
-  //   max: 5000,
-  //   handler: (req, res) => res.status(429).json({ error: "Too many requests" }),
-  // });
-  // app.use(limiter);
-
-  
   app.get("/", async (req, res) => {
     res.send("Hello World");
   });
-
-  
 
   // Website
   app.get("/stats", async (req, res) => {
@@ -234,27 +220,15 @@ if (cluster.isPrimary) {
   });
 
   app.get("/download", async (req, res) => {
-    if (!fs.existsSync(APK_PATH)) {
-      return res.status(404).send("APK not found.");
+    let record = await download.findOne();
+    if (!record) {
+      record = await download.create({});
     }
 
-    res.download(APK_PATH, "DigitalAttendance.apk", async (err) => {
-      if (err) {
-        console.error("Download failed:", err);
-      } else {
-        try {
-          let record = await download.findOne();
-          if (!record) {
-            record = await download.create({});
-          }
-          record.count += 1;
-          await record.save();
-          console.log("Download count updated.");
-        } catch (dbErr) {
-          console.error("Failed to update download count:", dbErr);
-        }
-      }
-    });
+    record.count += 1;
+    await record.save();
+
+    res.redirect(APK_LINK);
   });
 
   app.post("/register", async (req, res) => {
