@@ -49,7 +49,7 @@ if (cluster.isPrimary) {
   app.post("/github-webhook", (req, res) => {
     console.log("GitHub webhook received. Pulling latest code...");
     exec(
-      "cd /home/server/Server/digital_attendance_backend && git pull --no-rebase origin main",
+      "cd /home/server/Server/digital_attendance_backend && git pull origin main",
       (err, stdout, stderr) => {
         if (err) {
           console.error(`Pull failed: ${stderr}`);
