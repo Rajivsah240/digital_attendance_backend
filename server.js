@@ -41,10 +41,10 @@ if (cluster.isPrimary) {
   app.use(express.json());
   app.use(helmet());
   app.use(morgan("combined"));
-  app.use((req, res, next) => {
-    res.setHeader('ngrok-skip-browser-warning', 'true');
-    next();
-  });
+  // app.use((req, res, next) => {
+  //   res.setHeader('ngrok-skip-browser-warning', 'true');
+  //   next();
+  // });
 
 
   //github listner
