@@ -534,6 +534,49 @@ if (cluster.isPrimary) {
     }
   });
 
+  app.post("/faculty/bulk-enroll", async (req, res) => {
+    const { facultyEmail, subjectID, action } = req.body;
+  
+    try {
+      const faculty = await User.findOne({ email: facultyEmail });
+      if (!faculty)
+        return res.status(403).json({ error: "Invalid faculty account" });
+  
+      const subject = await Subject.findOne({
+        subjectID,
+        faculties: faculty._id,
+      });
+      if (!subject)
+        return res
+          .status(404)
+          .json({ error: "Subject not found or unauthorized" });
+  
+      const requestKey = `enrollment_requests:${subjectID}`;
+      const requests = await redisClient.hGetAll(requestKey);
+  
+      for (const [studentEmail, data] of Object.entries(requests)) {
+        const student = await User.findOne({ email: studentEmail });
+        if (!student) continue;
+  
+        if (action === "approve") {
+          subject.students.push(student._id);
+          subject.attendanceRecords.forEach(record => {
+            record.attendance.push({ student: student._id, present: false });
+          });
+        }
+  
+        await redisClient.hDel(requestKey, studentEmail);
+      }
+  
+      if (action === "approve") await subject.save();
+  
+      res.status(200).json({ message: `All students ${action}d successfully` });
+    } catch (error) {
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+  
+
   app.post("/faculty/add-faculty", async (req, res) => {
     try {
       const { subjectID, email, requestedByEmail } = req.body;
