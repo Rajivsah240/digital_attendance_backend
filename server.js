@@ -44,7 +44,7 @@ if (cluster.isPrimary) {
     next();
   });
 
-  //github listner
+  //github listner code start
   app.use("/github-webhook", bodyParser.raw({ type: "*/*" }));
   app.post("/github-webhook", (req, res) => {
     console.log("GitHub webhook received. Pulling latest code...");
@@ -60,7 +60,7 @@ if (cluster.isPrimary) {
       }
     );
   });
-  //github listner
+  //github listner code end
 
   const connectMongoDB = async () => {
     try {
