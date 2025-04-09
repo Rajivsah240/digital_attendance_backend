@@ -961,27 +961,26 @@ if (cluster.isPrimary) {
   // Faculty - Start Attendance
   app.post("/faculty/start-attendance", async (req, res) => {
     const { email, subjectID, location } = req.body;
-  
+
     const subject = await Subject.findOne({ subjectID });
     if (!subject)
       return res
         .status(404)
         .json({ success: false, error: "Subject not found" });
-  
+
     const todayDate = new Date().toISOString().split("T")[0];
-  
+
     const alreadyExists = subject.attendanceRecords.some(
       (record) => record.date.toISOString().split("T")[0] === todayDate
     );
-  
-    // Store location history in Redis as an array (starting with the first location)
+
     await redisClient.hSet(
       `attendance:${subjectID}`,
       email,
-      JSON.stringify([{ ...location, timestamp: Date.now() }])
+      JSON.stringify(location)
     );
-    await redisClient.expire(`attendance:${subjectID}`, 900); // 15 min TTL
-  
+    await redisClient.expire(`attendance:${subjectID}`, 900);
+
     const newAttendanceRecord = {
       date: new Date(),
       attendance: subject.students.map((studentId) => ({
@@ -989,16 +988,14 @@ if (cluster.isPrimary) {
         present: false,
       })),
     };
-  
+
     if (!alreadyExists) {
       subject.attendanceRecords.push(newAttendanceRecord);
     }
-  
     await subject.save();
-  
+
     res.json({ success: true, message: "Attendance started" });
   });
-  
 
 
   app.post("/faculty/update-location", async (req, res) => {
