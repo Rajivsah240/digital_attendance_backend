@@ -961,26 +961,27 @@ if (cluster.isPrimary) {
   // Faculty - Start Attendance
   app.post("/faculty/start-attendance", async (req, res) => {
     const { email, subjectID, location } = req.body;
-
+  
     const subject = await Subject.findOne({ subjectID });
     if (!subject)
       return res
         .status(404)
         .json({ success: false, error: "Subject not found" });
-
+  
     const todayDate = new Date().toISOString().split("T")[0];
-
+  
     const alreadyExists = subject.attendanceRecords.some(
       (record) => record.date.toISOString().split("T")[0] === todayDate
     );
-
+  
+    // Store location history in Redis as an array (starting with the first location)
     await redisClient.hSet(
       `attendance:${subjectID}`,
       email,
-      JSON.stringify(location)
+      JSON.stringify([{ ...location, timestamp: Date.now() }])
     );
-    await redisClient.expire(`attendance:${subjectID}`, 900);
-
+    await redisClient.expire(`attendance:${subjectID}`, 900); // 15 min TTL
+  
     const newAttendanceRecord = {
       date: new Date(),
       attendance: subject.students.map((studentId) => ({
@@ -988,14 +989,50 @@ if (cluster.isPrimary) {
         present: false,
       })),
     };
-
+  
     if (!alreadyExists) {
       subject.attendanceRecords.push(newAttendanceRecord);
     }
+  
     await subject.save();
-
+  
     res.json({ success: true, message: "Attendance started" });
   });
+  
+
+
+  app.post("/faculty/update-location", async (req, res) => {
+    const { email, subjectID, location } = req.body;
+  
+    const redisKey = `attendance:${subjectID}`;
+  
+    try {
+      // Get existing location array
+      const existingData = await redisClient.hGet(redisKey, email);
+      let locationArray = [];
+  
+      if (existingData) {
+        locationArray = JSON.parse(existingData);
+      }
+  
+      // Append the new location with timestamp
+      locationArray.push({ ...location, timestamp: Date.now() });
+  
+      // Keep only the latest 20 locations
+      if (locationArray.length > 20) {
+        locationArray = locationArray.slice(-20);
+      }
+  
+      // Update Redis
+      await redisClient.hSet(redisKey, email, JSON.stringify(locationArray));
+  
+      res.json({ success: true, message: "Location updated" });
+    } catch (err) {
+      console.error("Error updating location in Redis:", err);
+      res.status(500).json({ success: false, error: "Internal Server Error" });
+    }
+  });
+v  
 
   // Faculty - Stop Attendance
   app.post("/faculty/stop-attendance", async (req, res) => {
