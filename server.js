@@ -232,18 +232,22 @@ if (cluster.isPrimary) {
   
 
   app.post("/register", async (req, res) => {
-    const { name, email, password, registration_number, selected_role } =
-      req.body;
-    if (!(name && email && password && registration_number && selected_role))
+    const { name, email, password, registration_number, selected_role } = req.body;
+  
+    if (!(name && email && password && selected_role))
       return res.status(400).json({ error: "All fields required" });
-
+  
+    if (selected_role === "Student" && !registration_number)
+      return res.status(400).json({ error: "Registration number is required for students" });
+  
     const hashedPassword = await bcrypt.hash(password, 10);
+  
     try {
       const user = new User({
         name,
         email,
         password: hashedPassword,
-        registration_number,
+        registration_number: selected_role === "Student" ? registration_number : undefined,
         role: selected_role,
       });
       await user.save();
@@ -252,6 +256,7 @@ if (cluster.isPrimary) {
       res.status(409).json({ error: "Email already registered" });
     }
   });
+  
 
   app.post("/login", async (req, res) => {
     const { email, password, role } = req.body;
@@ -931,7 +936,7 @@ if (cluster.isPrimary) {
       email,
       JSON.stringify(location)
     );
-    await redisClient.expire(`attendance:${subjectID}`, 300);
+    await redisClient.expire(`attendance:${subjectID}`, 900);
 
     const newAttendanceRecord = {
       date: new Date(),
