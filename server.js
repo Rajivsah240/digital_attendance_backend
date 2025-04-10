@@ -980,7 +980,7 @@ if (cluster.isPrimary) {
       email,
       JSON.stringify(location)
     );
-    await redisClient.expire(`attendance:${subjectID}`, 900);
+    await redisClient.expire(`attendance:${subjectID}`, 300);
 
     const newAttendanceRecord = {
       date: new Date(),
