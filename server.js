@@ -977,7 +977,7 @@ if (cluster.isPrimary) {
     await redisClient.hSet(
       `attendance:${subjectID}`,
       email,
-      JSON.stringify(location)
+      JSON.stringify([{ ...location, timestamp: Date.now() }])
     );
     await redisClient.expire(`attendance:${subjectID}`, 900);
 
@@ -1004,23 +1004,17 @@ if (cluster.isPrimary) {
     const redisKey = `attendance:${subjectID}`;
   
     try {
-      // Get existing location array
       const existingData = await redisClient.hGet(redisKey, email);
       let locationArray = [];
   
       if (existingData) {
         locationArray = JSON.parse(existingData);
       }
-  
-      // Append the new location with timestamp
+
       locationArray.push({ ...location, timestamp: Date.now() });
-  
-      // Keep only the latest 20 locations
       if (locationArray.length > 20) {
         locationArray = locationArray.slice(-20);
       }
-  
-      // Update Redis
       await redisClient.hSet(redisKey, email, JSON.stringify(locationArray));
   
       res.json({ success: true, message: "Location updated" });
