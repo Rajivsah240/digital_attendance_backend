@@ -44,7 +44,7 @@ if (cluster.isPrimary) {
     next();
   });
 
-  //github listner code start
+  //github listener code start
   app.use("/github-webhook", bodyParser.raw({ type: "*/*" }));
   app.post("/github-webhook", (req, res) => {
     console.log("GitHub webhook received. Pulling latest code...");
@@ -60,7 +60,7 @@ if (cluster.isPrimary) {
       }
     );
   });
-  //github listner code end
+  //github listener code end
 
   const connectMongoDB = async () => {
     try {
@@ -1029,7 +1029,6 @@ if (cluster.isPrimary) {
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   });
-v  
 
   // Faculty - Stop Attendance
   app.post("/faculty/stop-attendance", async (req, res) => {
