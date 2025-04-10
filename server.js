@@ -40,7 +40,7 @@ if (cluster.isPrimary) {
   app.use(helmet());
   app.use(morgan("combined"));
   app.use((req, res, next) => {
-    res.setHeader('ngrok-skip-browser-warning', 'true');
+    res.setHeader("ngrok-skip-browser-warning", "true");
     next();
   });
 
@@ -223,31 +223,34 @@ if (cluster.isPrimary) {
     if (!record) {
       record = await download.create({});
     }
-  
+
     record.count += 1;
     await record.save();
-  
+
     res.json({ apkUrl: APK_LINK });
   });
-  
 
   app.post("/register", async (req, res) => {
-    const { name, email, password, registration_number, selected_role } = req.body;
-  
+    const { name, email, password, registration_number, selected_role } =
+      req.body;
+
     if (!(name && email && password && selected_role))
       return res.status(400).json({ error: "All fields required" });
-  
+
     if (selected_role === "Student" && !registration_number)
-      return res.status(400).json({ error: "Registration number is required for students" });
-  
+      return res
+        .status(400)
+        .json({ error: "Registration number is required for students" });
+
     const hashedPassword = await bcrypt.hash(password, 10);
-  
+
     try {
       const user = new User({
         name,
         email,
         password: hashedPassword,
-        registration_number: selected_role === "Student" ? registration_number : undefined,
+        registration_number:
+          selected_role === "Student" ? registration_number : undefined,
         role: selected_role,
       });
       await user.save();
@@ -256,7 +259,6 @@ if (cluster.isPrimary) {
       res.status(409).json({ error: "Email already registered" });
     }
   });
-  
 
   app.post("/login", async (req, res) => {
     const { email, password, role } = req.body;
@@ -536,12 +538,12 @@ if (cluster.isPrimary) {
 
   app.post("/faculty/bulk-enroll", async (req, res) => {
     const { facultyEmail, subjectID, action } = req.body;
-  
+
     try {
       const faculty = await User.findOne({ email: facultyEmail });
       if (!faculty)
         return res.status(403).json({ error: "Invalid faculty account" });
-  
+
       const subject = await Subject.findOne({
         subjectID,
         faculties: faculty._id,
@@ -550,32 +552,31 @@ if (cluster.isPrimary) {
         return res
           .status(404)
           .json({ error: "Subject not found or unauthorized" });
-  
+
       const requestKey = `enrollment_requests:${subjectID}`;
       const requests = await redisClient.hGetAll(requestKey);
-  
+
       for (const [studentEmail, data] of Object.entries(requests)) {
         const student = await User.findOne({ email: studentEmail });
         if (!student) continue;
-  
+
         if (action === "approve") {
           subject.students.push(student._id);
-          subject.attendanceRecords.forEach(record => {
+          subject.attendanceRecords.forEach((record) => {
             record.attendance.push({ student: student._id, present: false });
           });
         }
-  
+
         await redisClient.hDel(requestKey, studentEmail);
       }
-  
+
       if (action === "approve") await subject.save();
-  
+
       res.status(200).json({ message: `All students ${action}d successfully` });
     } catch (error) {
       res.status(500).json({ error: "Internal Server Error" });
     }
   });
-  
 
   app.post("/faculty/add-faculty", async (req, res) => {
     try {
@@ -977,7 +978,7 @@ if (cluster.isPrimary) {
     await redisClient.hSet(
       `attendance:${subjectID}`,
       email,
-      JSON.stringify([{ ...location, timestamp: Date.now() }])
+      JSON.stringify(location)
     );
     await redisClient.expire(`attendance:${subjectID}`, 900);
 
@@ -997,32 +998,55 @@ if (cluster.isPrimary) {
     res.json({ success: true, message: "Attendance started" });
   });
 
-
   app.post("/faculty/update-location", async (req, res) => {
     const { email, subjectID, location } = req.body;
   
-    const redisKey = `attendance:${subjectID}`;
-  
     try {
-      const existingData = await redisClient.hGet(redisKey, email);
-      let locationArray = [];
+      // Only update the field, don't reset the TTL
+      await redisClient.hSet(
+        `attendance:${subjectID}`,
+        email,
+        JSON.stringify(location)
+      );
   
-      if (existingData) {
-        locationArray = JSON.parse(existingData);
-      }
-
-      locationArray.push({ ...location, timestamp: Date.now() });
-      if (locationArray.length > 20) {
-        locationArray = locationArray.slice(-20);
-      }
-      await redisClient.hSet(redisKey, email, JSON.stringify(locationArray));
-  
-      res.json({ success: true, message: "Location updated" });
+      res.json({ success: true });
     } catch (err) {
-      console.error("Error updating location in Redis:", err);
-      res.status(500).json({ success: false, error: "Internal Server Error" });
+      res.status(500).json({ success: false, error: "Failed to update location" });
     }
   });
+  
+
+  // app.post("/faculty/update-location", async (req, res) => {
+  //   const { email, subjectID, location } = req.body;
+
+  //   const redisKey = `attendance:${subjectID}`;
+
+  //   try {
+  //     // Get existing location array
+  //     const existingData = await redisClient.hGet(redisKey, email);
+  //     let locationArray = [];
+
+  //     if (existingData) {
+  //       locationArray = JSON.parse(existingData);
+  //     }
+
+  //     // Append the new location with timestamp
+  //     locationArray.push({ ...location, timestamp: Date.now() });
+
+  //     // Keep only the latest 20 locations
+  //     if (locationArray.length > 20) {
+  //       locationArray = locationArray.slice(-20);
+  //     }
+
+  //     // Update Redis
+  //     await redisClient.hSet(redisKey, email, JSON.stringify(locationArray));
+
+  //     res.json({ success: true, message: "Location updated" });
+  //   } catch (err) {
+  //     console.error("Error updating location in Redis:", err);
+  //     res.status(500).json({ success: false, error: "Internal Server Error" });
+  //   }
+  // });
 
   // Faculty - Stop Attendance
   app.post("/faculty/stop-attendance", async (req, res) => {
