@@ -21,8 +21,7 @@ const bodyParser = require("body-parser");
 const crypto = require("crypto");
 const { exec } = require("child_process");
 
-const APK_LINK =
-  "https://github.com/Digital-Attendance/digital_attendance/releases/download/v1.0/app-release.apk";
+const APK_LINK = process.env.APK_LINK;
 dotenv.config();
 const numCPUs = os.cpus().length;
 
