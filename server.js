@@ -20,7 +20,7 @@ const e = require("express");
 const bodyParser = require("body-parser");
 const crypto = require("crypto");
 const { exec } = require("child_process");
-
+const versionPath = path.join(__dirname, "version.json");
 const APK_LINK = process.env.APK_LINK;
 dotenv.config();
 const numCPUs = os.cpus().length;
@@ -230,13 +230,13 @@ if (cluster.isPrimary) {
   });
 
   app.get("/latest-version", (req, res) => {
-    const latestVersion = process.env.LATEST_VERSION;
-    const apkLink = process.env.APK_LINK;
-  
-    res.json({
-      latestVersion,
-      androidDownloadLink: apkLink,
-    });
+    try {
+      const versionData = JSON.parse(fs.readFileSync(versionPath, "utf-8"));
+      res.json(versionData);
+    } catch (err) {
+      console.error("Error reading version.json:", err);
+      res.status(500).json({ error: "Unable to fetch version data" });
+    }
   });
 
   app.post("/register", async (req, res) => {
