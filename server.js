@@ -229,6 +229,16 @@ if (cluster.isPrimary) {
     res.json({ apkUrl: APK_LINK });
   });
 
+  app.get("/latest-version", (req, res) => {
+    const latestVersion = process.env.LATEST_VERSION;
+    const apkLink = process.env.APK_LINK;
+  
+    res.json({
+      latestVersion,
+      androidDownloadLink: apkLink,
+    });
+  });
+
   app.post("/register", async (req, res) => {
     const { name, email, password, registration_number, selected_role } =
       req.body;
@@ -1400,7 +1410,7 @@ if (cluster.isPrimary) {
             if (isPresent) presentCount++;
 
             return {
-              value: Math.round((presentCount / (index + 1)) * 100), // Cumulative %
+              value: Math.round((presentCount / (index + 1)) * 100),
               label: new Date(record.date).toLocaleDateString("en-US", {
                 day: "numeric",
                 month: "short",
