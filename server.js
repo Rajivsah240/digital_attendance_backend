@@ -380,6 +380,33 @@ if (cluster.isPrimary) {
       .json({ success: true, message: "Password reset successful" });
   });
 
+
+  // User - Get and Update
+
+  app.get('/user/:email', async (req, res) => {
+    try {
+      const user = await User.findOne({email: req.params.email});
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.status(200).json(user);
+    } catch (err) {
+      res.status(500).send('Server error');
+    }
+  });
+
+  app.put('/user/:email', async (req, res) => {
+    try {
+      const updated = await User.findOneAndUpdate(
+        {email: req.params.email},
+        req.body,
+        {new: true}
+      );
+      if (!updated) return res.status(404).json({ error: 'User not found' });
+      res.status(200).json(updated);
+    } catch (err) {
+      res.status(500).send('Update failed');
+    }
+  });
+
   // Faculty - add subject
   app.post("/faculty/add-subject", async (req, res) => {
     try {
