@@ -953,8 +953,9 @@ if (cluster.isPrimary) {
     async (req, res) => {
       try {
         const { subjectID, selectedDate } = req.params;
-        const targetDate = new Date(selectedDate);
-
+        
+        const targetDate = new Date(selectedDate);  
+                      
         const subject = await Subject.findOne({ subjectID })
           .populate("students")
           .populate("attendanceRecords.attendance.student");
@@ -1103,7 +1104,7 @@ if (cluster.isPrimary) {
   app.post("/faculty/update-attendance", async (req, res) => {
     try {
       const { subjectID, date, updatedAttendance } = req.body;
-
+      
       if (!subjectID || !date || !updatedAttendance) {
         return res.status(400).json({ error: "Missing required fields" });
       }
